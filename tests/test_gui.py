@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 try:
     import tkinter
-    from pkgextract_gui import ExtractorApp, PKG_FILE_TYPES, pkg_dialog_directory
+    from pkgextract_gui import ExtractorApp, PKG_FILE_TYPES, pkg_dialog_directory, backend_options
 except ImportError:
     ExtractorApp = None
 
@@ -21,6 +21,26 @@ def variable(value):
 
 @unittest.skipIf(ExtractorApp is None, 'Tcl/Tk libraries unavailable')
 class GUICommandTests(unittest.TestCase):
+    def test_english_selection_and_backend_language(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pkg = Path(folder) / 'game.pkg'
+            pkg.touch()
+            state = SimpleNamespace(language='en', pkg=Mock(), inspect=Mock(), games_path=variable(''))
+            state.pkg.get.return_value = str(pkg)
+            with patch('pkgextract_gui.filedialog.askopenfilename', return_value=str(pkg)) as dialog:
+                ExtractorApp._choose_pkg(state)
+            self.assertEqual(dialog.call_args.kwargs['title'], 'Select a PS4 PKG')
+            self.assertEqual(dialog.call_args.kwargs['filetypes'][0][0], 'All files')
+            command = ExtractorApp._command(state, False)
+            self.assertEqual(command[command.index('--language') + 1], 'en')
+
+    def test_windows_worker_uses_utf8_without_console_window(self):
+        with patch('pkgextract_gui.sys.platform', 'win32'), patch('pkgextract_gui.subprocess.CREATE_NO_WINDOW', 0x08000000, create=True):
+            options = backend_options()
+        self.assertEqual(options['encoding'], 'utf-8')
+        self.assertEqual(options['env']['PYTHONUTF8'], '1')
+        self.assertEqual(options['creationflags'], 0x08000000)
+
     def test_dialog_opens_beside_external_appimage(self):
         with tempfile.TemporaryDirectory(prefix='PKG com espaços ') as folder:
             with patch.dict('os.environ', {'APPIMAGE': str(Path(folder) / 'Extractor.AppImage')}):

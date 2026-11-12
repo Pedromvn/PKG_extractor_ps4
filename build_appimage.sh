@@ -27,6 +27,7 @@ if [[ "${SKIP_DEPENDENCIES:-0}" != 1 ]]; then
 fi
 "$VENV/bin/pyinstaller" --noconfirm --clean --onedir --name PS4PkgExtractor \
   --hidden-import pkg_full --hidden-import pkg_crypto \
+  --hidden-import pkg_i18n \
   --specpath "$BUILD" \
   --distpath "$BUILD/dist" --workpath "$BUILD/work" \
   "$ROOT/pkgextract_gui.py"
@@ -35,6 +36,7 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 cp -a "$BUILD/dist/PS4PkgExtractor/." "$APPDIR/usr/bin/"
 cp "$ROOT/README.md" "$APPDIR/README.md"
+cp "$ROOT/README.pt-BR.md" "$APPDIR/README.pt-BR.md"
 cp "$ROOT/LICENSE" "$ROOT/NOTICE.md" "$APPDIR/"
 cp "$ROOT/AppRun" "$APPDIR/AppRun"
 cp "$ROOT/PS4PkgExtractor.desktop" "$APPDIR/PS4PkgExtractor.desktop"

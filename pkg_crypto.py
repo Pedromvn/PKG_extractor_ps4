@@ -8,6 +8,8 @@ package's own AES/PFS keys.
 
 from __future__ import annotations
 
+from pkg_i18n import tr
+
 import hashlib
 import hmac
 import struct
@@ -25,13 +27,13 @@ FAKE_D = int("7f76cd0ee2d4de051cc6d9a80e8dfa7bca1eaa271a40f8f1228735dddbfdeef8c2
 
 def rsa_pkcs1_decrypt(ciphertext: bytes, modulus: int, exponent: int) -> bytes:
     if len(ciphertext) != 256 or int.from_bytes(ciphertext, "big") >= modulus:
-        raise ValueError("RSA PKG: bloco inválido ou truncado")
+        raise ValueError(tr('RSA PKG: bloco inválido ou truncado'))
     block = pow(int.from_bytes(ciphertext, "big"), exponent, modulus).to_bytes(256, "big")
     if not block.startswith(b"\0\2"):
-        raise ValueError("RSA PKG: padding inválido")
+        raise ValueError(tr('RSA PKG: padding inválido'))
     separator = block.find(b"\0", 2)
     if separator < 10:
-        raise ValueError("RSA PKG: mensagem inválida")
+        raise ValueError(tr('RSA PKG: mensagem inválida'))
     return block[separator + 1:]
 
 
@@ -59,7 +61,7 @@ def pfs_keys(ekpfs: bytes, seed: bytes) -> tuple[bytes, bytes]:
 
 def xts_decrypt(data_key: bytes, tweak_key: bytes, data: bytes, sector: int) -> bytes:
     if not data or len(data) % 16:
-        raise ValueError("AES-XTS exige dados alinhados em blocos de 16 bytes")
+        raise ValueError(tr('AES-XTS exige dados alinhados em blocos de 16 bytes'))
 
     # Let OpenSSL process each 0x1000 sector in native code. PS4 PFS resets
     # the XTS tweak at every sector; the previous implementation created one
@@ -77,12 +79,12 @@ def inflate_block(data: bytes) -> bytes:
     if len(data) == 0x10000:
         return bytes(data)
     if not 0 < len(data) < 0x10000:
-        raise ValueError("tamanho de bloco PFSC inválido")
+        raise ValueError(tr('tamanho de bloco PFSC inválido'))
     try:
         decoder = zlib.decompressobj()
         block = decoder.decompress(data, 0x10001)
     except zlib.error as error:
-        raise ValueError("bloco PFSC comprimido inválido") from error
+        raise ValueError(tr('bloco PFSC comprimido inválido')) from error
     if len(block) != 0x10000 or not decoder.eof or decoder.unused_data:
-        raise ValueError("bloco PFSC truncado ou com tamanho descomprimido inválido")
+        raise ValueError(tr('bloco PFSC truncado ou com tamanho descomprimido inválido'))
     return block

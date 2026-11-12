@@ -10,7 +10,8 @@ import zlib
 from pathlib import Path
 from unittest.mock import patch
 
-from pkg_crypto import inflate_block
+from pkg_crypto import inflate_block, xts_decrypt
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from pkg_full import BLOCK_SIZE, INODE_SIZE, FullPKG, directory_entries, safe_target
 from pkgextract import main
 
@@ -160,6 +161,16 @@ class PFSTests(unittest.TestCase):
 
 
 class CompressionTests(unittest.TestCase):
+    def test_xts_roundtrip_resets_tweak_at_each_sector(self):
+        data_key, tweak_key = bytes(range(16)), bytes(range(16, 32))
+        raw = bytes(range(256)) * 32
+        encrypted = bytearray()
+        for offset in range(0, len(raw), 0x1000):
+            tweak = struct.pack('<Q', 7 + offset // 0x1000) + bytes(8)
+            encryptor = Cipher(algorithms.AES(data_key + tweak_key), modes.XTS(tweak)).encryptor()
+            encrypted += encryptor.update(raw[offset:offset + 0x1000]) + encryptor.finalize()
+        self.assertEqual(xts_decrypt(data_key, tweak_key, bytes(encrypted), 7), raw)
+
     def test_valid_compressed_and_uncompressed_blocks(self):
         raw = b'a' * BLOCK_SIZE
         self.assertEqual(inflate_block(zlib.compress(raw)), raw)

@@ -1,21 +1,48 @@
 # PS4 PKG Extractor
 
-Extrator de pacotes PKG de PS4 em Python, com interface gráfica em português,
-linha de comando e empacotamento AppImage para Linux.
+**English** | [Português](README.pt-BR.md)
 
-Reconstrói os arquivos de fake PKGs (FPKG) compatíveis com o fluxo do
-shadPS4 0.7.0, preservando a estrutura `CUSAxxxxx/`. Lê diretórios PFS com
-múltiplos blocos, extrai os metadados do pacote e instala atualizações sobre
-o jogo base ou em uma pasta separada.
+A PS4 PKG extractor written in Python, featuring a Portuguese/English desktop
+interface, a command-line interface, a Linux AppImage and a Windows executable.
 
-## Requisitos e instalação
+Reconstructs files from fake PKGs (FPKGs) supported by the shadPS4 0.7.0
+extraction flow, preserving the `CUSAxxxxx/` directory layout. Supports
+multi-block PFS directories, package metadata and updates installed into the
+base game or a separate update folder.
 
-- Python **3.11 ou superior**.
-- `cryptography`, instalada pelo arquivo de dependências.
-- Tcl/Tk para a interface gráfica. No Linux, o pacote costuma se chamar
-  `python3-tk` em Debian/Ubuntu ou `tk` em Arch/CachyOS.
+## Download the application
 
-Dentro da pasta do projeto:
+Download the files from the [latest release](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest):
+
+| Platform | Download |
+| --- | --- |
+| Linux x86_64 | [PS4PkgExtractor-x86_64.AppImage](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/PS4PkgExtractor-x86_64.AppImage) |
+| Windows 10/11 x64 | [PS4PkgExtractor-windows-x64.exe](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/PS4PkgExtractor-windows-x64.exe) |
+| SHA-256 checksums | [SHA256SUMS.txt](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/SHA256SUMS.txt) |
+
+On Windows, run the `.exe`; Python installation is not required. On Linux:
+
+```bash
+chmod +x PS4PkgExtractor-x86_64.AppImage
+./PS4PkgExtractor-x86_64.AppImage
+# If FUSE is unavailable:
+APPIMAGE_EXTRACT_AND_RUN=1 ./PS4PkgExtractor-x86_64.AppImage
+```
+
+Use the **Idioma / Language** selector at the top of the window to switch
+between **Português** and **English**. The preference is saved in your user
+configuration folder, outside the executable. Buttons, dialogs, messages and
+progress follow the selected language. Switching is available while no
+operation is running; previously displayed log entries are preserved.
+
+## Requirements and source installation
+
+- Python **3.11 or newer**.
+- `cryptography`, installed through the requirements file.
+- Tcl/Tk for the GUI. Linux packages are commonly named `python3-tk` on
+  Debian/Ubuntu or `tk` on Arch/CachyOS.
+
+From the project directory:
 
 ```bash
 python3 -m venv .venv
@@ -23,138 +50,148 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-A linha de comando funciona sem Tcl/Tk. O AppImage inclui suas próprias
-bibliotecas e dispensa a instalação de Python no computador de destino.
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` instead.
+The CLI works without Tcl/Tk. Both packaged applications include their own
+Python and GUI dependencies.
 
-## Interface gráfica
+## Graphical interface
 
-Com o ambiente virtual ativado:
-
-```bash
-./run_gui.sh
-```
-
-Selecione o PKG e a pasta de jogos e clique em **Instalar**. **Analisar**
-mostra os metadados do pacote sem exigir uma pasta de saída. O seletor abre
-na pasta do AppImage ou do último PKG selecionado e mostra todos os arquivos
-por padrão.
-
-## Linha de comando
+With the virtual environment active:
 
 ```bash
-# Lista apenas os metadados externos do pacote.
-python pkgextract.py jogo.pkg --list
-
-# Lista também todos os arquivos do PFS.
-python pkgextract.py jogo.pkg --list-files
-
-# Valida todos os blocos sem gravar uma extração.
-python pkgextract.py jogo.pkg --verify
-
-# Extrai diretamente em dump/.
-python pkgextract.py jogo.pkg --output dump
-
-# Instala em games/CUSAxxxxx/.
-python pkgextract.py jogo.pkg --games-path games
-
-# Forma equivalente usando --output.
-python pkgextract.py jogo.pkg --install --output games
+python pkgextract_gui.py
 ```
 
-`--verify` descriptografa e descompacta os blocos e verifica a estrutura e os
-tamanhos. Não verifica assinaturas nem compara hashes com outro dump.
+On Linux, `./run_gui.sh` is also available. Select the PKG and games folder,
+then click **Install**. **Analyze** displays package metadata without requiring
+an output folder. The file picker starts beside the application or the last
+selected PKG and displays all files by default.
 
-## Atualizações
-
-O jogo base precisa estar instalado e conter `eboot.bin` e
-`sce_sys/param.sfo`. O pacote de atualização é identificado automaticamente.
+## Command line
 
 ```bash
-# Substitui os arquivos correspondentes do jogo instalado.
-python pkgextract.py update.pkg --games-path games
+# List outer package metadata in English.
+python pkgextract.py game.pkg --list --language en
 
-# Grava a atualização em games/CUSAxxxxx-UPDATE/.
-python pkgextract.py update.pkg --games-path games --separate-update
+# List all files inside the PFS too.
+python pkgextract.py game.pkg --list-files --language en
+
+# Validate every block without writing an extraction.
+python pkgextract.py game.pkg --verify --language en
+
+# Extract directly into dump/.
+python pkgextract.py game.pkg --output dump --language en
+
+# Install into games/CUSAxxxxx/.
+python pkgextract.py game.pkg --games-path games --language en
+
+# Equivalent installation using --output.
+python pkgextract.py game.pkg --install --output games --language en
+
+# English help (Portuguese is the default).
+python pkgextract.py --help --language en
 ```
 
-A extração escreve cada arquivo em um temporário e o substitui ao concluir.
-Em caso de falha, os arquivos já concluídos permanecem na pasta; a operação
-completa não é uma transação.
+`--verify` decrypts and decompresses the blocks and checks their structure
+and sizes. It does not validate signatures or compare hashes with another dump.
 
-## Gerar um AppImage
+## Updates
 
-O build requer Linux x86_64, Python com Tcl/Tk e as ferramentas de
-empacotamento. Instale as dependências e baixe o `appimagetool` das
-[releases oficiais](https://github.com/AppImage/appimagetool/releases).
+The base game must already contain `eboot.bin` and `sce_sys/param.sfo`.
+Update packages are detected automatically.
+
+```bash
+# Replace the corresponding installed game files.
+python pkgextract.py update.pkg --games-path games --language en
+
+# Write the patch into games/CUSAxxxxx-UPDATE/.
+python pkgextract.py update.pkg --games-path games --separate-update --language en
+```
+
+Each file is written to a temporary file and replaced on completion.
+Completed files remain in the destination if a later file fails; the entire
+installation is not a single transaction.
+
+## Build a Linux AppImage
+
+Building requires Linux x86_64, Python with Tcl/Tk, and packaging tools.
+Install the build dependencies and download `appimagetool` from its
+[official releases](https://github.com/AppImage/appimagetool/releases).
 
 ```bash
 python -m pip install -r requirements-build.txt
-chmod +x /caminho/appimagetool
-APPIMAGETOOL=/caminho/appimagetool ./build_appimage.sh
+chmod +x /path/to/appimagetool
+APPIMAGETOOL=/path/to/appimagetool ./build_appimage.sh
 ```
 
-O resultado padrão é `PS4PkgExtractor-x86_64.AppImage`. Para executar:
+The default output is `PS4PkgExtractor-x86_64.AppImage`.
 
-```bash
-chmod +x PS4PkgExtractor-x86_64.AppImage
-./PS4PkgExtractor-x86_64.AppImage
-
-# Alternativa para ambientes sem FUSE.
-APPIMAGE_EXTRACT_AND_RUN=1 ./PS4PkgExtractor-x86_64.AppImage
-```
-
-Opções de build:
-
-| Variável | Finalidade |
+| Environment variable | Purpose |
 | --- | --- |
-| `APPIMAGETOOL` | Caminho do empacotador executável. |
-| `APPIMAGE_RUNTIME` | Runtime local opcional, disponível no [projeto oficial](https://github.com/AppImage/type2-runtime/releases). |
-| `OUTPUT_APPIMAGE` | Caminho completo do arquivo final; a pasta precisa existir. |
-| `SKIP_DEPENDENCIES=1` | Reutiliza as dependências instaladas no ambiente de build. |
-| `TK_ROOT` | Pasta com Tcl/Tk extraídos localmente, sem instalar no sistema. |
+| `APPIMAGETOOL` | Path to the executable packaging tool. |
+| `APPIMAGE_RUNTIME` | Optional local runtime from the [official project](https://github.com/AppImage/type2-runtime/releases). |
+| `OUTPUT_APPIMAGE` | Full output path; its parent directory must exist. |
+| `SKIP_DEPENDENCIES=1` | Reuse installed build-environment dependencies. |
+| `TK_ROOT` | Locally extracted Tcl/Tk libraries, without system installation. |
 
-Para `TK_ROOT`, use a estrutura `usr/lib/x86_64-linux-gnu` e
-`usr/share/tcltk/{tcl8.6,tk8.6}`. O script também reconhece dependências locais
-em `build-appimage/{appimagetool,runtime-x86_64,tkroot}`. Esses artefatos são
-gerados ou obtidos separadamente e não integram o repositório.
+`TK_ROOT` expects `usr/lib/x86_64-linux-gnu` and
+`usr/share/tcltk/{tcl8.6,tk8.6}`. The script also discovers local dependencies
+under `build-appimage/{appimagetool,runtime-x86_64,tkroot}`. These separately
+obtained files are not included in the repository.
 
-O build gera o arquivo `.spec` dentro de `build-appimage/` e substitui o
-AppImage de destino somente após o empacotamento terminar com sucesso.
-Para distribuir um executável no GitHub, anexe o AppImage a uma **Release**.
+Build specifications are generated inside `build-appimage/`. The final
+AppImage replaces an existing output only after packaging succeeds.
 
-## Desenvolvimento
+## Build the Windows executable
+
+On Windows x64 with Python installed, run in PowerShell:
+
+```powershell
+./build_windows.ps1
+```
+
+The output is `build-windows/dist/PS4PkgExtractor-windows-x64.exe`, a single
+executable containing Python, Tcl/Tk and the runtime dependencies. Build it
+on Windows; this is not a cross-compilation setup.
+
+The **Build executables** GitHub Actions workflow can also be run manually.
+It tests the real GUI on both platforms, builds the applications, and tests
+the packaged backend in Portuguese and English with a synthetic PKG.
+Pushing a `v*` tag builds both platforms and publishes their executables and
+checksums in a release after both jobs pass.
+
+## Development
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Os testes usam dados sintéticos e não dependem de jogos ou PKGs locais.
-Os testes da lógica da interface precisam das bibliotecas Tcl/Tk, mas não
-de um display. Quando Tcl/Tk não está disponível, eles são ignorados.
-O GitHub Actions instala essas bibliotecas e executa a suíte em Python
-3.11, 3.12, 3.13 e 3.14.
+Tests use synthetic data and require no games or local PKGs. GUI logic tests
+need Tcl/Tk libraries but no display, and are skipped if the libraries are
+unavailable. GitHub Actions installs Tcl/Tk and runs the suite on Python
+3.11, 3.12, 3.13 and 3.14. Release builds additionally exercise the real GUI.
 
-Arquivos principais:
-
-| Arquivo | Responsabilidade |
+| File | Responsibility |
 | --- | --- |
-| `pkgextract.py` | Interface de linha de comando e instalação. |
-| `pkgextract_gui.py` | Interface gráfica Tkinter. |
-| `pkg_full.py` | Leitura do PKG, índice PFS e extração. |
-| `pkg_crypto.py` | Operações criptográficas e descompressão. |
-| `tests/` | Testes de regressão do parser, CLI e interface. |
-| `build_appimage.sh` | Build do executável para Linux. |
+| `pkgextract.py` | CLI and installation. |
+| `pkgextract_gui.py` | Tkinter desktop interface. |
+| `pkg_full.py` | PKG reading, PFS indexing and extraction. |
+| `pkg_crypto.py` | Cryptographic operations and decompression. |
+| `pkg_i18n.py` | Translations and saved language preference. |
+| `tests/` | Parser, CLI, GUI and packaging regression checks. |
+| `build_appimage.sh` | Linux application build. |
+| `build_windows.ps1` | Windows application build. |
 
-## Compatibilidade
+## Compatibility
 
-O projeto suporta os fake PKGs compatíveis com o fluxo implementado.
-Pacotes comerciais que exigem outras chaves não são suportados. A extração
-não garante que um jogo seja compatível com uma versão específica do emulador.
-DLCs com instalação em diretório separado ainda não são implementados;
-`--addons-path` está reservado para essa integração futura.
+Supports fake PKGs compatible with the implemented extraction flow.
+Commercial packages requiring other keys are unsupported. Successful
+extraction does not guarantee compatibility with a particular emulator version.
+DLC installation into a separate add-on folder is not implemented yet;
+`--addons-path` is reserved for that future integration.
 
-## Licença e créditos
+## License and credits
 
-Licença **GPL-2.0-or-later**, conforme [LICENSE](LICENSE).
-O parser e o fluxo criptográfico usam como referência o projeto shadPS4
-0.7.0. Créditos e referências estão em [NOTICE.md](NOTICE.md).
+Licensed under **GPL-2.0-or-later**; see [LICENSE](LICENSE).
+The parser and cryptographic flow reference the shadPS4 0.7.0 project.
+See [NOTICE.md](NOTICE.md) for credits and references.

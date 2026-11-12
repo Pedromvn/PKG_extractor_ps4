@@ -6,6 +6,8 @@ https://github.com/shadps4-emu/shadPS4/blob/v.0.7.0/src/core/file_format/pkg.cpp
 """
 from __future__ import annotations
 
+from pkg_i18n import tr
+
 import mmap
 import os
 import re
@@ -47,10 +49,10 @@ def safe_target(root: Path, name: str) -> Path:
     relative = Path(name)
     if (not name or relative.is_absolute() or ".." in relative.parts
             or "\\" in name or "\0" in name or ":" in name):
-        raise ValueError(f"nome de arquivo inseguro: {name!r}")
+        raise ValueError(tr('nome de arquivo inseguro: {value0!r}', value0=(name)))
     target = root / relative
     if not target.resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"destino fora da pasta de extração: {name!r}")
+        raise ValueError(tr('destino fora da pasta de extração: {value0!r}', value0=(name)))
     return target
 
 
@@ -66,13 +68,13 @@ def directory_entries(data: bytes) -> Iterator[tuple[int, int, str]]:
         if (entry_len < 16 or entry_len % 4 or entry_len > len(data) - pos
                 or entry_len > BLOCK_SIZE - pos % BLOCK_SIZE
                 or not 0 < name_len <= 255 or name_len > entry_len - 16):
-            raise ValueError(f"entrada de diretório PFS inválida em 0x{pos:x}")
+            raise ValueError(tr('entrada de diretório PFS inválida em 0x{value0:x}', value0=(pos)))
         try:
             name = data[pos + 16:pos + 16 + name_len].decode("utf-8")
         except UnicodeDecodeError as error:
-            raise ValueError("nome PFS não é UTF-8 válido") from error
+            raise ValueError(tr('nome PFS não é UTF-8 válido')) from error
         if "\0" in name or "/" in name or "\\" in name or ":" in name:
-            raise ValueError(f"nome de arquivo PFS inseguro: {name!r}")
+            raise ValueError(tr('nome de arquivo PFS inseguro: {value0!r}', value0=(name)))
         yield ino, kind, name
         pos += entry_len
 
@@ -89,15 +91,16 @@ class FullPKG:
         try:
             self.size = os.fstat(self.file.fileno()).st_size
             if self.size < 0x1000:
-                raise ValueError("cabeçalho PKG truncado")
-            self.mapping = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
+                raise ValueError(tr('cabeçalho PKG truncado'))
+            if hasattr(mmap, "MADV_DONTNEED"):
+                self.mapping = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
             self.header = self._read(0, 0x1000)
             if self.header[:4] != b"\x7fCNT":
-                raise ValueError("assinatura PKG inválida")
+                raise ValueError(tr('assinatura PKG inválida'))
             self.count = self.u32(0x10)
             self.table = self.u32(0x18)
             if not 0 < self.count <= 1_000_000 or self.table < 0x1000:
-                raise ValueError("tabela de entradas PKG inválida")
+                raise ValueError(tr('tabela de entradas PKG inválida'))
             self._check_range(self.table, self.count * 32)
             self.content_id = self.header[0x40:0x64].split(b"\0", 1)[0].decode("ascii", "replace")
             match = re.search(r"CUSA\d{5}", self.content_id)
@@ -108,7 +111,7 @@ class FullPKG:
                 self._check_range(values[4], values[5])
             declared_size = struct.unpack_from(">Q", self.header, 0x430)[0]
             if declared_size > self.size:
-                raise ValueError("arquivo PKG truncado: tamanho menor que o declarado")
+                raise ValueError(tr('arquivo PKG truncado: tamanho menor que o declarado'))
         except BaseException:
             self.close()
             raise
@@ -126,10 +129,18 @@ class FullPKG:
 
     def _check_range(self, offset, size):
         if offset < 0 or size < 0 or offset + size > self.size:
-            raise ValueError(f"leitura fora do PKG: 0x{offset:x}+0x{size:x}")
+            raise ValueError(tr('leitura fora do PKG: 0x{value0:x}+0x{value1:x}', value0=(offset), value1=(size)))
 
     def _read(self, offset, size):
         self._check_range(offset, size)
+        if self.mapping is None:
+            # Windows has no MADV_DONTNEED. Buffered reads bound physical
+            # memory without keeping every visited mapped page resident.
+            self.file.seek(offset)
+            data = self.file.read(size)
+            if len(data) != size:
+                raise ValueError(tr("cabeçalho PKG truncado"))
+            return data
         data = self.mapping[offset:offset + size]
         self._mapped_bytes += size
         if self._mapped_bytes >= 16 * 1024 * 1024 and hasattr(mmap, "MADV_DONTNEED"):
@@ -162,7 +173,7 @@ class FullPKG:
             if name_offset:
                 end = names.find(b"\0", name_offset)
                 if name_offset >= len(names) or end < 0:
-                    raise ValueError(f"nome de entrada PKG inválido: {ident:#x}")
+                    raise ValueError(tr('nome de entrada PKG inválido: {value0:#x}', value0=(ident)))
                 name = names[name_offset:end].decode("utf-8")
             if name:
                 safe_target(Path("."), name)
@@ -173,10 +184,10 @@ class FullPKG:
             return self._sfo
         raw = self._payload(0x1000)
         if len(raw) < 20 or raw[:4] != b"\0PSF":
-            raise ValueError("param.sfo inválido")
+            raise ValueError(tr('param.sfo inválido'))
         _, _, key_offset, data_offset, count = struct.unpack_from("<5I", raw)
         if not 20 + count * 16 <= key_offset <= data_offset <= len(raw):
-            raise ValueError("tabela param.sfo inválida")
+            raise ValueError(tr('tabela param.sfo inválida'))
         values = {}
         for index in range(count):
             key_index, fmt, length, maximum, value_offset = struct.unpack_from("<HHIII", raw, 20 + index * 16)
@@ -184,7 +195,7 @@ class FullPKG:
             key_end = raw.find(b"\0", key_start, data_offset)
             start = data_offset + value_offset
             if key_start >= data_offset or key_end < 0 or length > maximum or start + maximum > len(raw):
-                raise ValueError("entrada param.sfo truncada")
+                raise ValueError(tr('entrada param.sfo truncada'))
             key = raw[key_start:key_end].decode("utf-8", "replace")
             value = raw[start:start + length]
             values[key] = struct.unpack("<I", value)[0] if fmt == 0x404 and length == 4 else value.rstrip(b"\0").decode("utf-8", "replace")
@@ -206,7 +217,7 @@ class FullPKG:
     def _payload(self, ident):
         raw = self.entry(ident)
         if raw is None:
-            raise ValueError(f"entrada PKG ausente: {ident:#x}")
+            raise ValueError(tr('entrada PKG ausente: {value0:#x}', value0=(ident)))
         values = struct.unpack(">6I8x", raw)
         return self._read(values[4], values[5])
 
@@ -214,7 +225,7 @@ class FullPKG:
         if self._image is not None:
             return self._image
         if progress:
-            progress(0, 1000, "Lendo imagem PFS")
+            progress(0, 1000, tr('Lendo imagem PFS'))
         keys = self._payload(0x10)
         key_offset = 32 + 7 * 32 + 3 * 256
         self._dk3, ekpfs = unwrap_keys(self.entry(0x20), keys[key_offset:key_offset + 256], self._payload(0x20))
@@ -222,38 +233,38 @@ class FullPKG:
         cache_size = self.u32(0x43c) * 2
         self._check_range(pfs_offset, pfs_size)
         if not 0 < cache_size <= pfs_size or cache_size % SECTOR_SIZE:
-            raise ValueError("tamanho de cache PFS inválido")
+            raise ValueError(tr('tamanho de cache PFS inválido'))
         data_key, tweak_key = pfs_keys(ekpfs, self._read(pfs_offset + 0x370, 16))
         decrypted = xts_decrypt(data_key, tweak_key, self._read(pfs_offset, cache_size), 0)
         pfsc_offset = next((i for i in range(0x20000, len(decrypted), BLOCK_SIZE) if decrypted[i:i + 4] == b"PFSC"), None)
         if pfsc_offset is None or pfsc_offset + 0x30 > len(decrypted):
-            raise ValueError("PFSC não encontrado; PKG cifrado ou formato não suportado")
+            raise ValueError(tr('PFSC não encontrado; PKG cifrado ou formato não suportado'))
         block_size, offsets = struct.unpack_from("<2Q", decrypted, pfsc_offset + 0x10)
         data_length = struct.unpack_from("<Q", decrypted, pfsc_offset + 0x28)[0]
         if block_size != BLOCK_SIZE or not data_length or data_length % block_size:
-            raise ValueError("geometria PFSC não suportada")
+            raise ValueError(tr('geometria PFSC não suportada'))
         count = data_length // block_size
         map_start = pfsc_offset + offsets
         if offsets < 0x30 or map_start + (count + 1) * 8 > len(decrypted):
-            raise ValueError("mapa de blocos PFSC truncado")
+            raise ValueError(tr('mapa de blocos PFSC truncado'))
         sector_map = struct.unpack_from(f"<{count + 1}Q", decrypted, map_start)
         if sector_map[0] < offsets + (count + 1) * 8 or sector_map[-1] > pfs_size - pfsc_offset:
-            raise ValueError("mapa de blocos PFSC fora da imagem")
+            raise ValueError(tr('mapa de blocos PFSC fora da imagem'))
         if any(not 0 < end - start <= BLOCK_SIZE for start, end in zip(sector_map, sector_map[1:])):
-            raise ValueError("extensão de bloco PFSC inválida")
+            raise ValueError(tr('extensão de bloco PFSC inválida'))
         self._image = (sector_map, pfsc_offset, data_key, tweak_key, pfs_offset, pfs_size)
         return self._image
 
     def _block(self, index: int) -> bytes:
         sector_map, pfsc_offset, data_key, tweak_key, pfs_offset, pfs_size = self._load_pfs()
         if not 0 <= index < len(sector_map) - 1:
-            raise ValueError(f"índice de bloco PFS inválido: {index}")
+            raise ValueError(tr('índice de bloco PFS inválido: {value0}', value0=(index)))
         start, end = sector_map[index:index + 2]
         aligned = (pfsc_offset + start) & ~(SECTOR_SIZE - 1)
         skip = pfsc_offset + start - aligned
         read_size = (skip + end - start + SECTOR_SIZE - 1) & ~(SECTOR_SIZE - 1)
         if aligned + read_size > pfs_size:
-            raise ValueError(f"bloco PFS truncado: {index}")
+            raise ValueError(tr('bloco PFS truncado: {value0}', value0=(index)))
         encrypted = self._read(pfs_offset + aligned, read_size)
         data = xts_decrypt(data_key, tweak_key, encrypted, aligned // SECTOR_SIZE)
         return inflate_block(data[skip:skip + end - start])
@@ -268,7 +279,7 @@ class FullPKG:
         per_block = BLOCK_SIZE // INODE_SIZE
         inode_blocks = (count + per_block - 1) // per_block
         if count < 3 or inode_blocks + 1 >= len(image[0]):
-            raise ValueError("quantidade de inodes PFS inválida")
+            raise ValueError(tr('quantidade de inodes PFS inválida'))
         inodes = []
         for block_index in range(1, inode_blocks + 1):
             block = self._block(block_index)
@@ -280,19 +291,19 @@ class FullPKG:
                 blocks, location = struct.unpack_from("<2I", block, offset + 0x60)
                 if (mode not in (0x4000, 0x8000) or blocks != (size + BLOCK_SIZE - 1) // BLOCK_SIZE
                         or (blocks and (location < inode_blocks + 1 or location + blocks >= len(image[0])))):
-                    raise ValueError(f"inode PFS inválido ou não suportado: {len(inodes)}")
+                    raise ValueError(tr('inode PFS inválido ou não suportado: {value0}', value0=(len(inodes))))
                 inodes.append((mode, size, blocks, location))
 
         def read_directory(ino):
             if not 0 <= ino < len(inodes) or inodes[ino][0] != 0x4000:
-                raise ValueError(f"inode de diretório PFS inválido: {ino}")
+                raise ValueError(tr('inode de diretório PFS inválido: {value0}', value0=(ino)))
             _, _, blocks, location = inodes[ino]
             return list(directory_entries(b"".join(self._block(location + i) for i in range(blocks))))
 
         outer_entries = read_directory(0)
         roots = [ino for ino, kind, name in outer_entries if kind == 3 and name == "uroot"]
         if len(roots) != 1:
-            raise ValueError("diretório uroot PFS não encontrado")
+            raise ValueError(tr('diretório uroot PFS não encontrado'))
         root = roots[0]
         pending = [(root, "")]
         directories = []
@@ -304,31 +315,31 @@ class FullPKG:
             for ino, kind, name in read_directory(directory):
                 if name in (".", ".."):
                     if kind != (4 if name == "." else 5):
-                        raise ValueError(f"referência de diretório PFS inválida: {name}")
+                        raise ValueError(tr('referência de diretório PFS inválida: {value0}', value0=(name)))
                     continue
                 if not 0 < ino < len(inodes) or kind not in (2, 3):
-                    raise ValueError(f"entrada PFS não suportada: {name!r} (tipo {kind})")
+                    raise ValueError(tr('entrada PFS não suportada: {value0!r} (tipo {value1})', value0=(name), value1=(kind)))
                 path = f"{parent}/{name}" if parent else name
                 safe_target(Path("."), path)
                 if path in seen_paths:
-                    raise ValueError(f"caminho PFS duplicado: {path}")
+                    raise ValueError(tr('caminho PFS duplicado: {value0}', value0=(path)))
                 seen_paths.add(path)
                 referenced.add(ino)
                 mode, size, blocks, location = inodes[ino]
                 if kind == 3:
                     if ino in seen_dirs or mode != 0x4000:
-                        raise ValueError(f"diretório PFS cíclico ou inválido: {path}")
+                        raise ValueError(tr('diretório PFS cíclico ou inválido: {value0}', value0=(path)))
                     seen_dirs.add(ino)
                     directories.append(path)
                     pending.append((ino, path))
                 else:
                     if mode != 0x8000:
-                        raise ValueError(f"inode de arquivo PFS inválido: {path}")
+                        raise ValueError(tr('inode de arquivo PFS inválido: {value0}', value0=(path)))
                     files.append(PFSFile(path, size, location, blocks))
         if len(referenced) != count:
-            raise ValueError(f"índice PFS incompleto: {count - len(referenced)} inodes sem caminho")
+            raise ValueError(tr('índice PFS incompleto: {value0} inodes sem caminho', value0=(count - len(referenced))))
         if progress:
-            progress(100, 1000, f"Índice PFS: {len(files)} arquivos")
+            progress(100, 1000, tr('Índice PFS: {value0} arquivos', value0=(len(files))))
         self._index = (files, directories)
         return files
 
@@ -340,7 +351,7 @@ class FullPKG:
             yield chunk
             remaining -= len(chunk)
         if remaining:
-            raise ValueError(f"arquivo PFS incompleto: {item.name}")
+            raise ValueError(tr('arquivo PFS incompleto: {value0}', value0=(item.name)))
 
     def _process_files(self, files, consume, progress, verb):
         total = sum(item.size for item in files)
@@ -354,11 +365,11 @@ class FullPKG:
                     completed += len(chunk)
                     now = time.monotonic()
                     if progress and now - reported_at >= 0.1:
-                        progress(100 + completed * 900 // max(1, total), 1000, f"{verb} {item.name}")
+                        progress(100 + completed * 900 // max(1, total), 1000, tr('{value0} {value1}', value0=(verb), value1=(item.name)))
                         reported_at = now
             consume(item, chunks())
         if progress:
-            progress(1000, 1000, "Concluído")
+            progress(1000, 1000, tr('Concluído'))
 
     def verify(self, progress: Progress | None = None):
         """Decode all file blocks and validate sizes without writing a dump."""
@@ -366,7 +377,7 @@ class FullPKG:
         def consume(item, chunks):
             for _ in chunks:
                 pass
-        self._process_files(files, consume, progress, "Verificando")
+        self._process_files(files, consume, progress, tr("Verificando"))
         return len(files), sum(item.size for item in files)
 
     def extract(self, destination: Path, progress: Progress | None = None):
@@ -409,5 +420,5 @@ class FullPKG:
         # Write package metadata after validating the PFS layout and paths.
         for name, data in outer:
             write_atomic(name, [data])
-        self._process_files(files, lambda item, chunks: write_atomic(item.name, chunks), progress, "Extraindo")
+        self._process_files(files, lambda item, chunks: write_atomic(item.name, chunks), progress, tr("Extraindo"))
         return destination
