@@ -44,11 +44,11 @@ class GUICommandTests(unittest.TestCase):
     def test_dialog_opens_beside_external_appimage(self):
         with tempfile.TemporaryDirectory(prefix='PKG com espaços ') as folder:
             with patch.dict('os.environ', {'APPIMAGE': str(Path(folder) / 'Extractor.AppImage')}):
-                self.assertEqual(pkg_dialog_directory(), Path(folder))
+                self.assertEqual(pkg_dialog_directory(), Path(folder).resolve())
 
     def test_dialog_reopens_selected_pkg_folder(self):
         with tempfile.TemporaryDirectory() as folder:
-            self.assertEqual(pkg_dialog_directory(str(Path(folder) / 'game.pkg')), Path(folder))
+            self.assertEqual(pkg_dialog_directory(str(Path(folder) / 'game.pkg')), Path(folder).resolve())
 
     def test_dialog_shows_all_files_and_selects_pkg(self):
         with tempfile.NamedTemporaryFile(suffix='.pkg') as pkg:
@@ -56,7 +56,7 @@ class GUICommandTests(unittest.TestCase):
             state.pkg.get.return_value = pkg.name
             with patch('pkgextract_gui.filedialog.askopenfilename', return_value=pkg.name) as dialog:
                 ExtractorApp._choose_pkg(state)
-            self.assertEqual(dialog.call_args.kwargs['initialdir'], str(Path(pkg.name).parent))
+            self.assertEqual(dialog.call_args.kwargs['initialdir'], str(Path(pkg.name).parent.resolve()))
             self.assertEqual(dialog.call_args.kwargs['filetypes'][0], ('Todos os arquivos', '*'))
             state.pkg.set.assert_called_once_with(pkg.name)
             state.inspect.assert_called_once()
@@ -64,7 +64,7 @@ class GUICommandTests(unittest.TestCase):
     def test_tcl_glob_finds_pkg_with_spaces_and_mixed_case(self):
         interpreter = tkinter.Tcl()
         with tempfile.TemporaryDirectory() as folder:
-            names = ['Jogo com espaços.pkg', 'Game.PKG', 'Game.PkG', 'sem_extensao']
+            names = ['Jogo com espaços.pkg', 'Upper.PKG', 'Mixed.PkG', 'sem_extensao']
             for name in names:
                 (Path(folder) / name).touch()
             all_pattern = PKG_FILE_TYPES[0][1]
@@ -81,7 +81,7 @@ class GUICommandTests(unittest.TestCase):
             state = SimpleNamespace(pkg=variable('game.pkg'), games_path=variable(''), separate_update=variable(False))
             with chdir(folder):
                 command = ExtractorApp._command(state, False)
-            self.assertIn(str(pkg), command)
+            self.assertIn(str(pkg.resolve()), command)
 
     def test_inspect_does_not_require_games_folder(self):
         with tempfile.NamedTemporaryFile(suffix='.pkg') as pkg:

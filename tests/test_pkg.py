@@ -184,9 +184,10 @@ class CompressionTests(unittest.TestCase):
 
 class CLITests(unittest.TestCase):
     def test_invalid_package_returns_error_without_traceback(self):
-        with tempfile.NamedTemporaryFile() as f:
-            f.write(b'bad'); f.flush()
-            self.assertEqual(main([f.name, '--list']), 1)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'invalid.pkg'
+            path.write_bytes(b'bad')
+            self.assertEqual(main([str(path), '--list']), 1)
 
     def test_games_path_implies_install_folder(self):
         with tempfile.TemporaryDirectory() as d:
