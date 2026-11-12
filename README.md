@@ -20,7 +20,8 @@ Download the files from the [latest release](https://github.com/Pedromvn/PKG_ext
 | Windows 10/11 x64 | [PS4PkgExtractor-windows-x64.exe](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/PS4PkgExtractor-windows-x64.exe) |
 | SHA-256 checksums | [SHA256SUMS.txt](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/SHA256SUMS.txt) |
 
-On Windows, run the `.exe`; Python installation is not required. On Linux:
+On Windows, run the `.exe`; it opens only the graphical interface, without a
+terminal window. Python installation is not required. On Linux:
 
 ```bash
 chmod +x PS4PkgExtractor-x86_64.AppImage

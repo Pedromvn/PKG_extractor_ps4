@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 LANGUAGES = {"pt": "Português", "en": "English"}
 _language = ContextVar("pkg_language", default="pt")
 

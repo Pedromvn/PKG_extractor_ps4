@@ -28,6 +28,12 @@ def pkg_file_types(language="pt"):
 PKG_FILE_TYPES = pkg_file_types()
 
 
+def frozen_backend() -> Path:
+    if sys.platform == 'win32':
+        return ROOT / 'backend' / 'PS4PkgExtractor-backend.exe'
+    return Path(sys.executable)
+
+
 def pkg_dialog_directory(current: str = "") -> Path:
     """Start beside the selected PKG or the original external executable."""
     if current.strip():
@@ -155,7 +161,7 @@ class ExtractorApp(tk.Tk):
         if install and (not self.games_path.get().strip() or not games.is_dir()):
             raise ValueError(tr("Selecione uma pasta de jogos existente.", language))
         if getattr(sys, "frozen", False):
-            command = [sys.executable, "--backend", str(pkg)]
+            command = [str(frozen_backend()), "--backend", str(pkg)]
         else:
             command = [sys.executable, "-u", str(EXTRACTOR), str(pkg)]
         command += ['--language', language]
@@ -287,11 +293,17 @@ class ExtractorApp(tk.Tk):
 
 if __name__ == "__main__":
     if "--backend" in sys.argv:
+        arguments = sys.argv[sys.argv.index("--backend") + 1:]
+        if sys.platform == 'win32' and getattr(sys, 'frozen', False):
+            # A windowed Python process has no sys.stdout/sys.stderr. Forward
+            # inherited OS handles to the console-capable worker instead.
+            raise SystemExit(subprocess.call([str(frozen_backend()), *arguments],
+                                             creationflags=subprocess.CREATE_NO_WINDOW))
         from pkgextract import main as backend_main
         # Frozen Python may ignore PYTHONIOENCODING. The parent reads UTF-8
         # pipes on both platforms, including non-ASCII package paths.
         for stream in (sys.stdout, sys.stderr):
             if stream is not None and hasattr(stream, 'reconfigure'):
                 stream.reconfigure(encoding='utf-8', errors='replace')
-        raise SystemExit(backend_main(sys.argv[sys.argv.index("--backend") + 1:]))
+        raise SystemExit(backend_main(arguments))
     ExtractorApp().mainloop()

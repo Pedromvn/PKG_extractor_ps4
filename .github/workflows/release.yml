@@ -75,7 +75,11 @@ jobs:
         run: ./build_windows.ps1
       - name: Test packaged backend
         shell: pwsh
-        run: python tests/smoke_app.py ./build-windows/dist/PS4PkgExtractor-windows-x64.exe
+        run: |
+          python tests/smoke_windows_gui.py ./build-windows/dist/PS4PkgExtractor-windows-x64.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/smoke_app.py ./build-windows/dist/PS4PkgExtractor-windows-x64.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v7
         with:
           name: windows-executable

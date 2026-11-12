@@ -20,7 +20,8 @@ Baixe os arquivos na [última Release](https://github.com/Pedromvn/PKG_extractor
 | Windows 10/11 x64 | [PS4PkgExtractor-windows-x64.exe](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/PS4PkgExtractor-windows-x64.exe) |
 | SHA-256 | [SHA256SUMS.txt](https://github.com/Pedromvn/PKG_extractor_ps4/releases/latest/download/SHA256SUMS.txt) |
 
-No Windows, execute o `.exe`; não é necessário instalar Python. No Linux:
+No Windows, execute o `.exe`: ele abre somente a interface gráfica, sem
+janela de terminal. Não é necessário instalar Python. No Linux:
 
 ```bash
 chmod +x PS4PkgExtractor-x86_64.AppImage

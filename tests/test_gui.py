@@ -21,6 +21,17 @@ def variable(value):
 
 @unittest.skipIf(ExtractorApp is None, 'Tcl/Tk libraries unavailable')
 class GUICommandTests(unittest.TestCase):
+    def test_frozen_windows_uses_embedded_worker(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pkg = Path(folder) / 'game.pkg'
+            pkg.touch()
+            state = SimpleNamespace(language='en', pkg=variable(str(pkg)), games_path=variable(''))
+            with patch('pkgextract_gui.sys.platform', 'win32'), patch('pkgextract_gui.sys.frozen', True, create=True):
+                command = ExtractorApp._command(state, False)
+            self.assertEqual(Path(command[0]).name, 'PS4PkgExtractor-backend.exe')
+            self.assertEqual(Path(command[0]).parent.name, 'backend')
+            self.assertIn('--list', command)
+
     def test_english_selection_and_backend_language(self):
         with tempfile.TemporaryDirectory() as folder:
             pkg = Path(folder) / 'game.pkg'

@@ -12,10 +12,25 @@ if (-not $SkipDependencies) {
     & $VenvPython -m pip install -r (Join-Path $ProjectRoot "requirements-build.txt")
     if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed." }
 }
-# A console-subsystem executable retains working stdout/stderr for --backend.
-# PyInstaller hides only a console owned by this app, keeping the GUI clean.
+# The worker needs real stdout/stderr for progress and errors. It is embedded
+# inside the GUI and launched exclusively with CREATE_NO_WINDOW.
+$WorkerOptions = @(
+    "--noconfirm", "--clean", "--onedir", "--console",
+    "--name", "PS4PkgExtractor-backend",
+    "--hidden-import", "pkg_full", "--hidden-import", "pkg_crypto", "--hidden-import", "pkg_i18n",
+    "--specpath", $BuildRoot,
+    "--distpath", (Join-Path $BuildRoot "backend"),
+    "--workpath", (Join-Path $BuildRoot "work-backend"),
+    (Join-Path $ProjectRoot "pkgextract_backend.py")
+)
+& $VenvPython -m PyInstaller @WorkerOptions
+if ($LASTEXITCODE -ne 0) { throw "Backend build failed." }
+$WorkerDirectory = Join-Path $BuildRoot "backend/PS4PkgExtractor-backend"
+
+# A Windows GUI-subsystem binary never creates a terminal on launch.
 $Options = @(
-    "--noconfirm", "--clean", "--onefile", "--console", "--hide-console", "hide-early",
+    "--noconfirm", "--clean", "--onefile", "--windowed",
+    "--add-data", "$WorkerDirectory;backend",
     "--name", "PS4PkgExtractor-windows-x64",
     "--hidden-import", "pkg_full", "--hidden-import", "pkg_crypto", "--hidden-import", "pkg_i18n",
     "--specpath", $BuildRoot,
