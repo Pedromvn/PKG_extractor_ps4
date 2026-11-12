@@ -5,6 +5,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -99,5 +103,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" release/*.AppImage release/*.exe release/SHA256SUMS.txt \
-            --verify-tag --title "PS4 PKG Extractor $RELEASE_TAG" --generate-notes
+          if gh release view "$RELEASE_TAG" --json tagName >/dev/null 2>&1; then
+            echo "Release already exists; preserving its published assets."
+          else
+            gh release create "$RELEASE_TAG" release/*.AppImage release/*.exe release/SHA256SUMS.txt \
+              --verify-tag --title "PS4 PKG Extractor $RELEASE_TAG" --generate-notes
+          fi
