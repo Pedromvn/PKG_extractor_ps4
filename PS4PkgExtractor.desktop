@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=PS4 PKG Extractor
+Comment=Extrai jogos e patches de PKG de PS4
+Exec=PS4PkgExtractor
+Type=Application
+Categories=Utility;
+Icon=PS4PkgExtractor

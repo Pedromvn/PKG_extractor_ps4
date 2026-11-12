@@ -1,0 +1,41 @@
+# Python and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Generated binaries and build dependencies
+/build-appimage/
+/build/
+/dist/
+*.spec
+*.AppImage
+*.AppImage.*
+*.part
+
+# Local packages, extracted games and comparison reports
+*.[pP][kK][gG]
+*.iso
+/games/
+/extracted/
+/dump/
+/reports/
+/CUSA[0-9]*/
+/shadps4*/
+/DEVELOPMENT.md
+/Resumo da conversa*
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.aws/
+.codex/
+.agents/
+.vscode/
+.idea/
+.DS_Store

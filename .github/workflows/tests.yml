@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install Tcl/Tk
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends python3-tk
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check syntax and Tcl/Tk
+        run: |
+          python -c "import tkinter; tkinter.Tcl()"
+          python -m py_compile pkgextract.py pkgextract_gui.py pkg_full.py pkg_crypto.py
+          bash -n AppRun run_gui.sh build_appimage.sh
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
