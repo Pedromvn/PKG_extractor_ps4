@@ -40,6 +40,21 @@ kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD,
 kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 with tempfile.TemporaryDirectory(prefix='pkg-windowed-') as folder:
+    # Exercise the exact worker and libraries embedded in the downloaded GUI,
+    # rather than relying on a separate build-directory executable.
+    extracted = Path(folder) / 'embedded'
+    for name in archive.toc:
+        relative = name.replace('\\', '/')
+        if not relative.startswith('backend/'):
+            continue
+        target = extracted / relative
+        assert target.resolve().is_relative_to(extracted.resolve())
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(archive.extract(name))
+    subprocess.run([sys.executable, str(Path(__file__).with_name('smoke_app.py')),
+                    str(extracted / 'backend/PS4PkgExtractor-backend.exe')],
+                   check=True, timeout=180)
+
     process = subprocess.Popen([str(executable)], env=dict(os.environ, APPDATA=folder))
     handles = []
     @callback_type

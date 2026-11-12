@@ -292,13 +292,11 @@ class ExtractorApp(tk.Tk):
 
 
 if __name__ == "__main__":
-    if "--backend" in sys.argv:
+    # The Windows GUI has no standard streams. Its embedded worker owns the
+    # backend entry point; Linux continues using this executable for both.
+    windows_gui = sys.platform == 'win32' and getattr(sys, 'frozen', False)
+    if "--backend" in sys.argv and not windows_gui:
         arguments = sys.argv[sys.argv.index("--backend") + 1:]
-        if sys.platform == 'win32' and getattr(sys, 'frozen', False):
-            # A windowed Python process has no sys.stdout/sys.stderr. Forward
-            # inherited OS handles to the console-capable worker instead.
-            raise SystemExit(subprocess.call([str(frozen_backend()), *arguments],
-                                             creationflags=subprocess.CREATE_NO_WINDOW))
         from pkgextract import main as backend_main
         # Frozen Python may ignore PYTHONIOENCODING. The parent reads UTF-8
         # pipes on both platforms, including non-ASCII package paths.
