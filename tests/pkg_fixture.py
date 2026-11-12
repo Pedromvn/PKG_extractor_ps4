@@ -4,8 +4,7 @@ import struct
 from pathlib import Path
 
 
-def metadata_pkg(path: Path):
-    values = {'TITLE_ID': 'CUSA12345', 'CATEGORY': 'gd', 'APP_VER': '01.00'}
+def sfo_data(values: dict) -> bytes:
     keys = bytearray()
     payloads = bytearray()
     entries = bytearray()
@@ -17,7 +16,13 @@ def metadata_pkg(path: Path):
         payloads += data
     key_offset = 20 + len(entries)
     data_offset = key_offset + len(keys)
-    sfo = struct.pack('<5I', 0x46535000, 0x101, key_offset, data_offset, len(values)) + entries + keys + payloads
+    return struct.pack('<5I', 0x46535000, 0x101, key_offset, data_offset, len(values)) + entries + keys + payloads
+
+
+def metadata_pkg(path: Path, **overrides):
+    values = {'TITLE_ID': 'CUSA12345', 'CATEGORY': 'gd', 'APP_VER': '01.00'}
+    values.update(overrides)
+    sfo = sfo_data(values)
     names = b'\0param.sfo\0'
     header = bytearray(0x1000)
     header[:4] = b'\x7fCNT'

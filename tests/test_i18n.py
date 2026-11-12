@@ -23,7 +23,7 @@ class LanguageTests(unittest.TestCase):
 
     def test_all_backend_diagnostics_have_english_translation(self):
         root = Path(__file__).resolve().parents[1]
-        for file in ('pkg_full.py', 'pkg_crypto.py'):
+        for file in ('pkg_full.py', 'pkg_crypto.py', 'pkg_checks.py'):
             for node in ast.walk(ast.parse((root / file).read_text(encoding='utf-8'))):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'tr':
                     if node.args and isinstance(node.args[0], ast.Constant):
@@ -69,3 +69,42 @@ class LanguageTests(unittest.TestCase):
         self.assertEqual(package._read(3, 4), b'3456')
         with self.assertRaises(ValueError):
             package._read(9, 2)
+
+
+class PreferenceTests(unittest.TestCase):
+    def test_language_and_directories_survive_independent_updates(self):
+        from pkg_i18n import load_settings, save_settings
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'config/settings.json'
+            with patch('pkg_i18n.settings_path', return_value=target):
+                self.assertTrue(save_language('en'))
+                self.assertTrue(save_settings(pkg_directory='packages', games_directory='games'))
+                self.assertTrue(save_language('pt'))
+                self.assertEqual(load_settings(), {'language': 'pt', 'pkg_directory': 'packages', 'games_directory': 'games'})
+                self.assertTrue(save_settings(games_directory=''))
+                self.assertEqual(load_settings()['pkg_directory'], 'packages')
+                self.assertEqual(load_settings()['games_directory'], '')
+
+    def test_failed_atomic_save_preserves_previous_settings(self):
+        from pkg_i18n import load_settings, save_settings
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'settings.json'
+            with patch('pkg_i18n.settings_path', return_value=target):
+                self.assertTrue(save_settings(language='en', games_directory='games'))
+                before = target.read_bytes()
+                with patch('pkg_i18n.os.replace', side_effect=OSError('read-only')):
+                    self.assertFalse(save_language('pt'))
+                self.assertEqual(target.read_bytes(), before)
+                self.assertEqual(load_settings()['language'], 'en')
+                self.assertFalse(list(Path(folder).glob('.settings-*.tmp')))
+
+    def test_invalid_settings_fields_are_ignored(self):
+        from pkg_i18n import load_settings, save_settings
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / 'settings.json'
+            target.write_text('{"language":[],"pkg_directory":{},"games_directory":2}', encoding='utf-8')
+            with patch('pkg_i18n.settings_path', return_value=target):
+                self.assertEqual(load_settings(), {'language': 'pt'})
+                self.assertFalse(save_settings(language=[]))
+                self.assertFalse(save_language(None))
+                self.assertFalse(save_settings(pkg_directory='bad\0path'))

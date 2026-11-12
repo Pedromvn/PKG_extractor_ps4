@@ -36,7 +36,7 @@ class GUICommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             pkg = Path(folder) / 'game.pkg'
             pkg.touch()
-            state = SimpleNamespace(language='en', pkg=Mock(), inspect=Mock(), games_path=variable(''))
+            state = SimpleNamespace(language='en', pkg=Mock(), inspect=Mock(), games_path=variable(''), _save_preferences=Mock())
             state.pkg.get.return_value = str(pkg)
             with patch('pkgextract_gui.filedialog.askopenfilename', return_value=str(pkg)) as dialog:
                 ExtractorApp._choose_pkg(state)
@@ -63,7 +63,7 @@ class GUICommandTests(unittest.TestCase):
 
     def test_dialog_shows_all_files_and_selects_pkg(self):
         with tempfile.NamedTemporaryFile(suffix='.pkg') as pkg:
-            state = SimpleNamespace(pkg=Mock(), inspect=Mock())
+            state = SimpleNamespace(pkg=Mock(), inspect=Mock(), _save_preferences=Mock())
             state.pkg.get.return_value = pkg.name
             with patch('pkgextract_gui.filedialog.askopenfilename', return_value=pkg.name) as dialog:
                 ExtractorApp._choose_pkg(state)
@@ -120,6 +120,69 @@ class GUICommandTests(unittest.TestCase):
         values = [call.kwargs['value'] for call in widget.configure.call_args_list]
         self.assertEqual(values, [100, 200, 200, 1000])
         widget.stop.assert_called_once()
+
+@unittest.skipIf(ExtractorApp is None, 'Tcl/Tk libraries unavailable')
+class GUIInstallationTests(unittest.TestCase):
+    def test_busy_close_leaves_application_and_operation_running(self):
+        state = SimpleNamespace(running=True, language='en', _save_preferences=Mock(), destroy=Mock())
+        with patch('pkgextract_gui.messagebox.showinfo') as info:
+            ExtractorApp._on_close(state)
+        state.destroy.assert_not_called()
+        state._save_preferences.assert_not_called()
+        self.assertTrue(state.running)
+        self.assertIn('Wait for the operation', info.call_args.args[1])
+
+    def test_idle_close_saves_preferences_and_closes(self):
+        state = SimpleNamespace(running=False, language='en', _save_preferences=Mock(), destroy=Mock())
+        ExtractorApp._on_close(state)
+        state._save_preferences.assert_called_once()
+        state.destroy.assert_called_once()
+
+    def test_remembered_pkg_directory_precedes_application_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            previous = root / 'packages'
+            previous.mkdir()
+            with patch.dict('os.environ', {'APPIMAGE': str(root / 'App.AppImage')}):
+                self.assertEqual(pkg_dialog_directory(remembered=str(previous)), previous.resolve())
+                self.assertEqual(pkg_dialog_directory(remembered=str(root / 'missing')), root.resolve())
+
+    def test_preferences_capture_valid_typed_paths(self):
+        from pkg_i18n import load_settings
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            pkg = root / 'game.pkg'
+            pkg.touch()
+            games = root / 'games'
+            games.mkdir()
+            state = SimpleNamespace(language='en', pkg=variable(str(pkg)), games_path=variable(str(games)), _last_pkg_dir='')
+            with patch('pkg_i18n.settings_path', return_value=root / 'settings.json'):
+                ExtractorApp._save_preferences(state)
+                result = load_settings()
+            self.assertEqual(result['pkg_directory'], str(root.resolve()))
+            self.assertEqual(result['games_directory'], str(games.resolve()))
+            self.assertEqual(result['language'], 'en')
+
+    def test_downgrade_retries_only_the_confirmed_command(self):
+        for accepted in (True, False):
+            with self.subTest(accepted=accepted):
+                events = queue.Queue()
+                events.put(('log', 'CONFIRM_DOWNGRADE {"installed":"01.10","incoming":"01.09"}\n'))
+                events.put(('done', '2'))
+                original = ['extractor', 'original.pkg', '--install', '--games-path', 'original-games', '--language', 'en']
+                state = SimpleNamespace(events=events, language='en', _pending_downgrade=None,
+                    _current_command=original, _finish=Mock(), _start_operation=Mock(), _set_status=Mock(),
+                    after=Mock(), _poll_events=Mock(), pkg=variable('different.pkg'))
+                with patch('pkgextract_gui.messagebox.askyesno', return_value=accepted) as confirm:
+                    ExtractorApp._poll_events(state)
+                self.assertIn('Installed version: 01.10', confirm.call_args.args[1])
+                self.assertEqual(confirm.call_args.kwargs['default'], 'no')
+                state._finish.assert_called_once_with(False)
+                if accepted:
+                    state._start_operation.assert_called_once_with(original + ['--allow-downgrade'], True)
+                else:
+                    state._start_operation.assert_not_called()
+                    state._set_status.assert_called_with('Operação cancelada.')
 
 
 if __name__ == '__main__':

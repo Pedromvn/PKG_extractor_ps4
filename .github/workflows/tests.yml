@@ -31,7 +31,7 @@ jobs:
       - name: Check syntax and Tcl/Tk
         run: |
           python -c "import tkinter; tkinter.Tcl()"
-          python -m py_compile pkgextract.py pkgextract_gui.py pkg_full.py pkg_crypto.py pkg_i18n.py pkgextract_backend.py
+          python -m py_compile pkgextract.py pkgextract_gui.py pkg_full.py pkg_crypto.py pkg_i18n.py pkgextract_backend.py pkg_checks.py
           bash -n AppRun run_gui.sh build_appimage.sh
       - name: Run tests
         run: python -m unittest discover -s tests -v
