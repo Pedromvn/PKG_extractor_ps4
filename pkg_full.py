@@ -7,6 +7,7 @@ https://github.com/shadps4-emu/shadPS4/blob/v.0.7.0/src/core/file_format/pkg.cpp
 from __future__ import annotations
 
 from pkg_i18n import tr
+from pkg_checks import ensure_disk_space, parse_sfo
 
 import mmap
 import os
@@ -182,25 +183,8 @@ class FullPKG:
     def sfo_values(self):
         if self._sfo is not None:
             return self._sfo
-        raw = self._payload(0x1000)
-        if len(raw) < 20 or raw[:4] != b"\0PSF":
-            raise ValueError(tr('param.sfo inválido'))
-        _, _, key_offset, data_offset, count = struct.unpack_from("<5I", raw)
-        if not 20 + count * 16 <= key_offset <= data_offset <= len(raw):
-            raise ValueError(tr('tabela param.sfo inválida'))
-        values = {}
-        for index in range(count):
-            key_index, fmt, length, maximum, value_offset = struct.unpack_from("<HHIII", raw, 20 + index * 16)
-            key_start = key_offset + key_index
-            key_end = raw.find(b"\0", key_start, data_offset)
-            start = data_offset + value_offset
-            if key_start >= data_offset or key_end < 0 or length > maximum or start + maximum > len(raw):
-                raise ValueError(tr('entrada param.sfo truncada'))
-            key = raw[key_start:key_end].decode("utf-8", "replace")
-            value = raw[start:start + length]
-            values[key] = struct.unpack("<I", value)[0] if fmt == 0x404 and length == 4 else value.rstrip(b"\0").decode("utf-8", "replace")
-        self._sfo = values
-        return values
+        self._sfo = parse_sfo(self._payload(0x1000))
+        return self._sfo
 
     @property
     def category(self):
@@ -399,6 +383,7 @@ class FullPKG:
             outer.append((f"sce_sys/{name}", data))
         for name, _ in outer:
             safe_target(destination, name)
+        ensure_disk_space(destination, sum(item.size for item in files) + sum(len(data) for _, data in outer))
         destination.mkdir(parents=True, exist_ok=True)
         for name in self._index[1]:
             safe_target(destination, name).mkdir(parents=True, exist_ok=True)

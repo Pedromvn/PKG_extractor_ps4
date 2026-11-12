@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 import queue
 import re
 import subprocess
@@ -14,7 +15,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from pkg_i18n import LANGUAGES, VERSION, load_language, save_language, tr
+from pkg_i18n import LANGUAGES, VERSION, load_settings, save_settings, save_language, tr
 
 ROOT = Path(__file__).resolve().parent
 EXTRACTOR = ROOT / "pkgextract.py"
@@ -34,13 +35,24 @@ def frozen_backend() -> Path:
     return Path(sys.executable)
 
 
-def pkg_dialog_directory(current: str = "") -> Path:
+def existing_directory(value: str) -> str:
+    try:
+        path = Path(value).expanduser()
+        return str(path.resolve()) if value and path.is_dir() else ''
+    except (OSError, ValueError):
+        return ''
+
+
+def pkg_dialog_directory(current: str = "", remembered: str = "") -> Path:
     """Start beside the selected PKG or the original external executable."""
     if current.strip():
         selected = Path(current.strip()).expanduser().resolve()
         directory = selected if selected.is_dir() else selected.parent
         if directory.is_dir():
             return directory
+    previous = existing_directory(remembered)
+    if previous:
+        return Path(previous)
     appimage = os.environ.get("APPIMAGE")
     if appimage:
         directory = Path(appimage).expanduser().resolve().parent
@@ -70,16 +82,46 @@ class ExtractorApp(tk.Tk):
         self.started_at = 0.0
         self.progress_indeterminate = False
         self.last_progress = 0
-        self.language = load_language()
+        preferences = load_settings()
+        self.language = preferences['language']
+        self._last_pkg_dir = existing_directory(preferences.get('pkg_directory', ''))
+        self._pending_downgrade = None
+        self._current_command = []
         self._textvars = {}
         self._status_key = "Selecione um PKG para começar."
         self.language_choice = tk.StringVar(value=LANGUAGES[self.language])
         self.pkg = tk.StringVar()
-        self.games_path = tk.StringVar()
+        self.games_path = tk.StringVar(value=preferences.get('games_directory', ''))
         self.separate_update = tk.BooleanVar()
         self.status = tk.StringVar(value=tr(self._status_key, self.language))
         self._build_ui()
+        self.protocol('WM_DELETE_WINDOW', self._on_close)
         self.after(100, self._poll_events)
+
+    def _save_preferences(self):
+        values = {'language': self.language}
+        pkg = self.pkg.get().strip()
+        if pkg:
+            try:
+                if Path(pkg).expanduser().is_file():
+                    self._last_pkg_dir = str(Path(pkg).expanduser().resolve().parent)
+            except (OSError, ValueError):
+                pass
+        if self._last_pkg_dir:
+            values['pkg_directory'] = self._last_pkg_dir
+        games = self.games_path.get().strip()
+        if not games or existing_directory(games):
+            values['games_directory'] = existing_directory(games)
+        save_settings(**values)
+
+    def _on_close(self):
+        if self.running:
+            messagebox.showinfo(tr('Operação em andamento', self.language),
+                                tr('Aguarde a conclusão da operação antes de fechar o aplicativo.', self.language),
+                                parent=self)
+            return
+        self._save_preferences()
+        self.destroy()
 
     def _text(self, key):
         if key not in self._textvars:
@@ -116,13 +158,19 @@ class ExtractorApp(tk.Tk):
         self.language_selector.bind('<<ComboboxSelected>>', self._change_language)
 
         ttk.Label(main, textvariable=self._text("Arquivo PKG")).grid(row=1, column=0, sticky="w", padx=(0, 10), pady=5)
-        ttk.Entry(main, textvariable=self.pkg).grid(row=1, column=1, sticky="ew", pady=5)
-        ttk.Button(main, textvariable=self._text("Selecionar"), command=self._choose_pkg).grid(row=1, column=2, padx=(8, 0), pady=5)
+        pkg_entry = ttk.Entry(main, textvariable=self.pkg)
+        pkg_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        pkg_button = ttk.Button(main, textvariable=self._text("Selecionar"), command=self._choose_pkg)
+        pkg_button.grid(row=1, column=2, padx=(8, 0), pady=5)
         ttk.Label(main, textvariable=self._text("Pasta de jogos")).grid(row=2, column=0, sticky="w", padx=(0, 10), pady=5)
-        ttk.Entry(main, textvariable=self.games_path).grid(row=2, column=1, sticky="ew", pady=5)
-        ttk.Button(main, textvariable=self._text("Selecionar"), command=self._choose_games).grid(row=2, column=2, padx=(8, 0), pady=5)
-        ttk.Checkbutton(main, textvariable=self._text("Separar patch em CUSAxxxxx-UPDATE (mantém o jogo original intacto)"),
-                        variable=self.separate_update).grid(row=3, column=1, columnspan=2, sticky="w", pady=(4, 10))
+        games_entry = ttk.Entry(main, textvariable=self.games_path)
+        games_entry.grid(row=2, column=1, sticky="ew", pady=5)
+        games_button = ttk.Button(main, textvariable=self._text("Selecionar"), command=self._choose_games)
+        games_button.grid(row=2, column=2, padx=(8, 0), pady=5)
+        update_check = ttk.Checkbutton(main, textvariable=self._text("Separar patch em CUSAxxxxx-UPDATE (mantém o jogo original intacto)"),
+                                       variable=self.separate_update)
+        update_check.grid(row=3, column=1, columnspan=2, sticky="w", pady=(4, 10))
+        self._input_widgets = [pkg_entry, pkg_button, games_entry, games_button, update_check]
         self.log = tk.Text(main, height=12, state="disabled", wrap="word")
         self.log.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=(4, 10))
         scrollbar = ttk.Scrollbar(main, orient="vertical", command=self.log.yview)
@@ -141,16 +189,19 @@ class ExtractorApp(tk.Tk):
     def _choose_pkg(self) -> None:
         language = getattr(self, 'language', 'pt')
         selected = filedialog.askopenfilename(parent=self, title=tr("Selecionar PKG de PS4", language),
-                                             initialdir=str(pkg_dialog_directory(self.pkg.get())),
+                                             initialdir=str(pkg_dialog_directory(self.pkg.get(), getattr(self, '_last_pkg_dir', ''))),
                                              filetypes=pkg_file_types(language))
         if selected:
             self.pkg.set(selected)
+            self._save_preferences()
             self.inspect()
 
     def _choose_games(self) -> None:
-        selected = filedialog.askdirectory(parent=self, title=tr("Selecionar pasta de jogos do shadPS4", self.language))
+        selected = filedialog.askdirectory(parent=self, title=tr("Selecionar pasta de jogos do shadPS4", self.language),
+                                           initialdir=existing_directory(self.games_path.get()) or str(pkg_dialog_directory(remembered=self._last_pkg_dir)))
         if selected:
             self.games_path.set(selected)
+            self._save_preferences()
 
     def _command(self, install: bool) -> list[str]:
         language = getattr(self, 'language', 'pt')
@@ -164,7 +215,7 @@ class ExtractorApp(tk.Tk):
             command = [str(frozen_backend()), "--backend", str(pkg)]
         else:
             command = [sys.executable, "-u", str(EXTRACTOR), str(pkg)]
-        command += ['--language', language]
+        command += ['--language', language, '--gui']
         if install:
             command += ["--install", "--games-path", str(games)]
             if self.separate_update.get():
@@ -191,6 +242,14 @@ class ExtractorApp(tk.Tk):
         except ValueError as error:
             messagebox.showerror(tr("Dados inválidos", self.language), str(error), parent=self)
             return
+        self._save_preferences()
+        self._start_operation(command, install)
+
+    def _start_operation(self, command: list[str], install: bool) -> None:
+        if self.running:
+            return
+        self._current_command = list(command)
+        self._pending_downgrade = None
         self.running = True
         self.operation_install = install
         self.started_at = time.monotonic()
@@ -198,6 +257,8 @@ class ExtractorApp(tk.Tk):
         self.inspect_button.configure(state="disabled")
         self.install_button.configure(state="disabled")
         self.language_selector.configure(state="disabled")
+        for widget in self._input_widgets:
+            widget.configure(state='disabled')
         self._set_status("Extraindo, aguarde..." if install else "Analisando...")
         if install:
             self.progress.configure(mode="indeterminate", value=0)
@@ -228,6 +289,8 @@ class ExtractorApp(tk.Tk):
         self.inspect_button.configure(state="normal")
         self.install_button.configure(state="normal")
         self.language_selector.configure(state="readonly")
+        for widget in self._input_widgets:
+            widget.configure(state='normal')
         if success:
             self.progress.configure(mode="determinate", maximum=1, value=1)
         self._set_status("Concluído." if success else "Falhou.")
@@ -238,6 +301,14 @@ class ExtractorApp(tk.Tk):
             while True:
                 kind, value = self.events.get_nowait()
                 if kind == "log":
+                    if value.startswith('CONFIRM_DOWNGRADE '):
+                        try:
+                            pending = json.loads(value.split(' ', 1)[1])
+                            if isinstance(pending, dict) and all(isinstance(pending.get(key), str) for key in ('installed', 'incoming')):
+                                self._pending_downgrade = {key: pending[key] for key in ('installed', 'incoming')}
+                        except ValueError:
+                            pass
+                        continue
                     progress = re.match(r"PROGRESS (\d+) (\d+) (.*)", value.strip())
                     if progress:
                         current, total, message = progress.groups()
@@ -262,6 +333,19 @@ class ExtractorApp(tk.Tk):
                 elif kind == "done":
                     success = value == "0"
                     self._finish(success)
+                    if value == '2' and self._pending_downgrade:
+                        pending = self._pending_downgrade
+                        command = list(self._current_command)
+                        self._pending_downgrade = None
+                        self._set_status('Versão mais antiga')
+                        accepted = messagebox.askyesno(tr('Versão mais antiga', language),
+                            tr('Versão instalada: {installed}\nVersão do patch: {incoming}\n\nEste patch é mais antigo. Deseja continuar mesmo assim?', language, **pending),
+                            parent=self, default=messagebox.NO)
+                        if accepted:
+                            self._start_operation(command + ['--allow-downgrade'], True)
+                        else:
+                            self._set_status('Operação cancelada.')
+                        continue
                     if success and self.operation_install:
                         messagebox.showinfo(tr("Concluído", language), tr("Operação finalizada.", language), parent=self)
                     elif not success:

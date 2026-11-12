@@ -34,7 +34,8 @@ Use o seletor **Idioma / Language**, no topo da janela, para alternar entre
 **Português** e **English**. A preferência fica salva na pasta de configuração
 do usuário, fora do executável. Os botões, diálogos, mensagens e o progresso
 acompanham o idioma selecionado. A troca fica disponível quando não há uma
-operação em andamento; o histórico já exibido no log é preservado.
+operação em andamento; o histórico já exibido no log é preservado. As últimas
+pastas de PKG e de jogos também são lembradas ao reabrir o aplicativo.
 
 ## Requisitos e instalação
 
@@ -66,6 +67,17 @@ Selecione o PKG e a pasta de jogos e clique em **Instalar**. **Analisar**
 mostra os metadados do pacote sem exigir uma pasta de saída. O seletor abre
 na pasta do AppImage ou do último PKG selecionado e mostra todos os arquivos
 por padrão.
+
+## Verificações antes de instalar
+
+Antes de gravar qualquer arquivo, o aplicativo confere o espaço livre na
+unidade de destino considerando todos os arquivos descompactados e metadados,
+mais uma margem de 1% (no mínimo 16 MiB). Arquivos já existentes não são
+descontados dessa estimativa conservadora, inclusive em reinstalações e patches.
+
+Durante uma operação, os campos ficam desativados e o fechamento da janela é
+bloqueado até a conclusão, para evitar uma instalação parcial causada por
+fechamento acidental.
 
 ## Linha de comando
 
@@ -100,10 +112,19 @@ tamanhos. Não verifica assinaturas nem compara hashes com outro dump.
 
 O jogo base precisa estar instalado e conter `eboot.bin` e
 `sce_sys/param.sfo`. O pacote de atualização é identificado automaticamente.
+O `TITLE_ID`, os `CONTENT_ID` disponíveis, a categoria e a versão instalada
+são validados antes de extrair. Pacotes incompatíveis são recusados. Um patch
+mais antigo exige confirmação explícita na interface; no terminal, a operação
+para com código de saída 2, a menos que você use `--allow-downgrade`
+conscientemente. Essa opção não ignora a identificação do jogo. A versão de
+uma pasta de atualização separada também é conferida.
 
 ```bash
 # Substitui os arquivos correspondentes do jogo instalado.
 python pkgextract.py update.pkg --games-path games
+
+# Permite conscientemente um patch compatível mais antigo.
+python pkgextract.py update.pkg --games-path games --allow-downgrade
 
 # Grava a atualização em games/CUSAxxxxx-UPDATE/.
 python pkgextract.py update.pkg --games-path games --separate-update
@@ -189,6 +210,7 @@ Arquivos principais:
 | `pkgextract.py` | Interface de linha de comando e instalação. |
 | `pkgextract_gui.py` | Interface gráfica Tkinter. |
 | `pkg_full.py` | Leitura do PKG, índice PFS e extração. |
+| `pkg_checks.py` | Espaço em disco, leitura SFO e validação de patches. |
 | `pkg_crypto.py` | Operações criptográficas e descompressão. |
 | `pkg_i18n.py` | Traduções e preferência de idioma. |
 | `tests/` | Testes de regressão do parser, CLI e interface. |

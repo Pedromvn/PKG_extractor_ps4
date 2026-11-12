@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
 from pkg_i18n import VERSION, language_context, tr
+from pkg_checks import PatchDowngradeError, validate_patch
 
 
 class PkgError(ValueError):
@@ -44,6 +46,8 @@ def _main(argv: list[str] | None) -> int:
     parser.add_argument("--games-path", type=Path, help=tr("diretório de jogos do shadPS4"))
     parser.add_argument("--addons-path", type=Path, help=tr("diretório de DLCs do shadPS4"))
     parser.add_argument("--separate-update", action="store_true", help=tr("instala o patch em CUSAxxxxx-UPDATE em vez de misturá-lo ao jogo"))
+    parser.add_argument('--allow-downgrade', action='store_true', help=tr('permite aplicar um patch mais antigo após conferir a versão'))
+    parser.add_argument('--gui', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     try:
@@ -72,14 +76,20 @@ def _main(argv: list[str] | None) -> int:
                     raise PkgError(tr("Title ID CUSA inválido; não é possível instalar o pacote"))
                 if pkg.is_patch:
                     game = root / pkg.title_id
-                    if not (game / "eboot.bin").is_file() or not (game / "sce_sys/param.sfo").is_file():
-                        print(tr("aviso: jogo {title} não encontrado em {root}; o patch não foi aplicado", title=pkg.title_id, root=root), file=sys.stderr)
-                        return 1
+                    validate_patch(pkg, game, separate_update=args.separate_update,
+                                   allow_downgrade=args.allow_downgrade)
                     output = root / f"{pkg.title_id}-UPDATE" if args.separate_update else game
                 else:
                     output = root / pkg.title_id if args.install or args.games_path else root
                 pkg.extract(output, progress=report_progress)
                 print(tr("Extraído em: {path}", path=output))
+    except PatchDowngradeError as error:
+        if args.gui:
+            print('CONFIRM_DOWNGRADE ' + json.dumps({'installed': error.installed, 'incoming': error.incoming}), flush=True)
+        print(tr('erro: {error}', error=error), file=sys.stderr)
+        if not args.gui:
+            print(tr('Para continuar conscientemente, execute novamente com --allow-downgrade.'), file=sys.stderr)
+        return 2
     except (OSError, ValueError) as error:
         print(tr("erro: {error}", error=error), file=sys.stderr)
         return 1

@@ -34,7 +34,8 @@ Use the **Idioma / Language** selector at the top of the window to switch
 between **Português** and **English**. The preference is saved in your user
 configuration folder, outside the executable. Buttons, dialogs, messages and
 progress follow the selected language. Switching is available while no
-operation is running; previously displayed log entries are preserved.
+operation is running; previously displayed log entries are preserved. The last PKG folder and games
+folder are also remembered between launches.
 
 ## Requirements and source installation
 
@@ -68,6 +69,17 @@ then click **Install**. **Analyze** displays package metadata without requiring
 an output folder. The file picker starts beside the application or the last
 selected PKG and displays all files by default.
 
+## Installation checks
+
+Before writing any output, the app checks free space on the destination drive
+against the complete uncompressed payload, including package metadata, plus
+1% headroom (at least 16 MiB). Existing files are not subtracted from this
+conservative estimate, even when reinstalling or replacing a patch.
+
+While an operation is running, the inputs are disabled and closing the window
+is blocked until it finishes. This avoids accidentally leaving a partial
+installation by closing the application.
+
 ## Command line
 
 ```bash
@@ -99,11 +111,19 @@ and sizes. It does not validate signatures or compare hashes with another dump.
 ## Updates
 
 The base game must already contain `eboot.bin` and `sce_sys/param.sfo`.
-Update packages are detected automatically.
+Update packages are detected automatically. The installed `TITLE_ID`, available
+`CONTENT_ID` values, category and application version are validated before
+extraction. Incompatible packages are rejected. An older patch requires an
+explicit confirmation in the GUI; the CLI stops with exit code 2 unless you
+intentionally pass `--allow-downgrade`. This flag never bypasses game identity
+checks. A separate update folder is also checked for a newer installed version.
 
 ```bash
 # Replace the corresponding installed game files.
 python pkgextract.py update.pkg --games-path games --language en
+
+# Deliberately allow an older, compatible patch.
+python pkgextract.py update.pkg --games-path games --allow-downgrade --language en
 
 # Write the patch into games/CUSAxxxxx-UPDATE/.
 python pkgextract.py update.pkg --games-path games --separate-update --language en
@@ -177,6 +197,7 @@ unavailable. GitHub Actions installs Tcl/Tk and runs the suite on Python
 | `pkgextract.py` | CLI and installation. |
 | `pkgextract_gui.py` | Tkinter desktop interface. |
 | `pkg_full.py` | PKG reading, PFS indexing and extraction. |
+| `pkg_checks.py` | Destination space, SFO parsing and patch validation. |
 | `pkg_crypto.py` | Cryptographic operations and decompression. |
 | `pkg_i18n.py` | Translations and saved language preference. |
 | `tests/` | Parser, CLI, GUI and packaging regression checks. |

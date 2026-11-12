@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -39,6 +40,7 @@ ENGLISH = {
     "Concluído": "Completed",
     "Operação finalizada.": "Operation completed.",
     "Erro": "Error",
+    "O pacote não contém uma atualização válida.": "The package does not contain a valid update.",
     "A operação falhou. Consulte o log.": "The operation failed. Check the log.",
     "ERRO: {error}\n": "ERROR: {error}\n",
     " - restante ~{duration}": " - remaining ~{duration}",
@@ -118,6 +120,51 @@ ENGLISH.update({'nome de arquivo inseguro: {value0!r}': 'unsafe filename: {value
  'Extraindo': 'Extracting'})
 
 
+ENGLISH.update({'O patch {incoming} é mais antigo que a versão instalada {installed}.': 'Patch {incoming} is older than '
+                                                                         'installed version {installed}.',
+ 'APP_VER inválida: {version!r}': 'Invalid APP_VER: {version!r}',
+ 'Jogo base não encontrado em {path}; o patch não foi aplicado.': 'Base game not found in {path}; the patch '
+                                                                  'was not applied.',
+ 'O patch {title} não corresponde ao TITLE_ID do jogo instalado.': 'Patch {title} does not match the '
+                                                                   'installed game TITLE_ID.',
+ 'CONTENT_ID incompatível com o jogo {title}.': 'CONTENT_ID is incompatible with game {title}.',
+ 'O CONTENT_ID do patch é diferente do jogo instalado.': 'The patch CONTENT_ID differs from the installed '
+                                                         'game.',
+ 'O destino não contém um jogo base ou uma atualização válida.': 'The destination does not contain a valid '
+                                                                 'base game or update.',
+ 'A pasta de atualização contém outro TITLE_ID.': 'The update folder contains a different TITLE_ID.',
+ 'Espaço insuficiente em {path}: necessários {required} GiB, disponíveis {free} GiB.': 'Not enough space on '
+                                                                                       '{path}: {required} '
+                                                                                       'GiB required, {free} '
+                                                                                       'GiB available.',
+ 'permite aplicar um patch mais antigo após conferir a versão': 'allow an older patch after checking the '
+                                                                'version',
+ 'Para continuar conscientemente, execute novamente com --allow-downgrade.': 'To proceed intentionally, run '
+                                                                             'again with --allow-downgrade.',
+ 'Operação em andamento': 'Operation in progress',
+ 'Aguarde a conclusão da operação antes de fechar o aplicativo.': 'Wait for the operation to finish before '
+                                                                  'closing the application.',
+ 'Versão mais antiga': 'Older version',
+ 'Versão instalada: {installed}\nVersão do patch: {incoming}\n\nEste patch é mais antigo. Deseja continuar mesmo assim?': 'Installed '
+                                                                                                                          'version: '
+                                                                                                                          '{installed}\n'
+                                                                                                                          'Patch '
+                                                                                                                          'version: '
+                                                                                                                          '{incoming}\n'
+                                                                                                                          '\n'
+                                                                                                                          'This '
+                                                                                                                          'patch '
+                                                                                                                          'is '
+                                                                                                                          'older. '
+                                                                                                                          'Do '
+                                                                                                                          'you '
+                                                                                                                          'want '
+                                                                                                                          'to '
+                                                                                                                          'continue '
+                                                                                                                          'anyway?',
+ 'Operação cancelada.': 'Operation cancelled.'})
+
+
 def tr(message: str, language: str | None = None, **values) -> str:
     language = language or _language.get()
     return (ENGLISH.get(message, message) if language == "en" else message).format(**values)
@@ -140,21 +187,58 @@ def settings_path() -> Path:
     return root / "ps4pkg-extractor" / "settings.json"
 
 
-def load_language() -> str:
+def load_settings() -> dict:
+    settings = {'language': 'pt'}
     try:
-        value = json.loads(settings_path().read_text(encoding="utf-8")).get("language")
-        return value if isinstance(value, str) and value in LANGUAGES else "pt"
-    except (OSError, ValueError, AttributeError):
-        return "pt"
+        raw = json.loads(settings_path().read_text(encoding='utf-8'))
+        if not isinstance(raw, dict):
+            return settings
+        language = raw.get('language')
+        if isinstance(language, str) and language in LANGUAGES:
+            settings['language'] = language
+        for key in ('pkg_directory', 'games_directory'):
+            value = raw.get(key)
+            if isinstance(value, str) and '\0' not in value:
+                settings[key] = value
+    except (OSError, ValueError):
+        pass
+    return settings
 
 
-def save_language(language: str) -> bool:
-    if language not in LANGUAGES:
+def save_settings(*, language=None, pkg_directory=None, games_directory=None) -> bool:
+    if language is not None and (not isinstance(language, str) or language not in LANGUAGES):
         return False
+    settings = load_settings()
+    for key, value in (('language', language), ('pkg_directory', pkg_directory), ('games_directory', games_directory)):
+        if value is not None:
+            if not isinstance(value, str) or '\0' in value:
+                return False
+            settings[key] = value
+    temporary = None
     try:
         target = settings_path()
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps({"language": language}) + "\n", encoding="utf-8")
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=target.parent,
+                                         prefix='.settings-', suffix='.tmp', delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(json.dumps(settings, ensure_ascii=False) + '\n')
+        os.replace(temporary, target)
         return True
     except OSError:
         return False
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def load_language() -> str:
+    return load_settings()['language']
+
+
+def save_language(language: str) -> bool:
+    if not isinstance(language, str) or language not in LANGUAGES:
+        return False
+    return save_settings(language=language)
